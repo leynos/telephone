@@ -343,6 +343,9 @@ The system operates within the following technical boundaries:
   change detection.
 - **Technical Context:** Builds on differential dataflow to reconcile delta
   batches with materialised relations.
+- **Semantics:** Groups updates into monotone `epoch` transactions, applies
+  delta joins until fixpoint, and honours parser `Delay -<N>` and diff-mark
+  adornments exactly as specified in ADR-001.
 
 #### F-002 Dependencies
 
@@ -1737,6 +1740,46 @@ enabling the processing of massive datasets in real time. We have created novel
 data-parallel implementations of core relational algebra operations (join),
 while also optimizing deduplication and tuple materialization.
 
+### 5.2.5 Canonical Planning And IR Layer
+
+#### Canonical Planning And IR Layer – Purpose and Responsibilities
+
+Bridges the DDlog parser and GPU code generator with a structured, MLIR-style
+intermediate representation. Encodes rules, delta semantics, and provenance as
+typed ops, enables rewrite-driven optimisation, and produces deterministic plan
+hashes that power compile- and run-time caches.
+
+#### Canonical Planning And IR Layer – Technologies and Frameworks
+
+- **pliron `tel` dialect:** Provides typed ops, regions, and verifiers for
+  relations, rules, delta views, and fixpoint regions while retaining parser
+  adornments (`Delay`, diff marks, references) as attributes.
+- **egg / egglog:** Hosts rewrite sets for join associativity/commutativity,
+  predicate pushdown, and delta distribution; saturation is budgeted to keep
+  compilation predictable.
+- **melior exporter (optional):** Future compatibility layer to emit an MLIR
+  dialect without making MLIR a runtime dependency.
+
+#### Canonical Planning And IR Layer – Key Interfaces and APIs
+
+- `lower_to_tel(ast: &DatalogProgram) -> Result<TelModule, TelError>`
+- `canonicalise(module: &TelModule) -> Result<CanonicalPlan, CanonicaliseError>`
+- `plan_hash(plan: &CanonicalPlan, target: &TargetProfile) -> PlanHash`
+- `lower_to_backend(plan: &CanonicalPlan, target: &TargetProfile) -> BackendPlan`
+
+#### Canonical Planning And IR Layer – Data Persistence Requirements
+
+Maintains a three-tier cache keyed by `PlanHash`: logical plan DAG, compiled
+kernel bundle, and optional result shard metadata. Cache entries are salted
+with target ABI and statistics fingerprints to avoid cross-environment clashes.
+
+#### Canonical Planning And IR Layer – Scaling Considerations
+
+Equality saturation can grow quickly; the planner enforces node/iteration caps
+and uses cost-guided extraction to keep compilations bounded. Deterministic
+plan hashes ensure that rule changes invalidate only the affected sub-DAGs,
+enabling fast redeployments for streaming knowledge-graph workloads.
+
 ## 5.3 Technical Decisions
 
 ### 5.3.1 Architecture Style Decisions And Tradeoffs
@@ -2535,6 +2578,34 @@ flowchart LR
     M --> N
 ```
 
+### 6.2.5 Epoch Scheduling And Provenance Semantics
+
+The incremental processor realises ADR-001’s model for time and provenance:
+
+- **Epoch transactions:** Ingest pipelines tag each batch with a monotonically
+  increasing `epoch: u64`. Producers call `begin_epoch(t)`, stream tuple/weight
+  pairs, and complete with `seal_epoch(t)`. Late tuples (`epoch < watermark`)
+  are rejected in v0.1 and surfaced via telemetry for replay.
+- **Delta iteration:** Once sealed, the scheduler performs semi-naïve
+  delta products—`ΔA_t × B_{≤t}` etc.—until `ΔR_t` is empty, then folds the
+  derived deltas into the compacted base with cancellation.
+- **Parser adornments:** `Delay -<N>` shifts contributions to `t+N`, diff marks
+  expose the current delta buffers, and multi-head rules expand into multiple
+  heads that share the same body evaluation.
+- **Provenance weights:** Every tuple carries an integer weight (`Δ ∈ ℤ`).
+  Unions add weights, joins multiply them (default Z-set semantics), and
+  compaction drops tuples whose accumulated weight is zero. Optional
+  user-defined tags propagate alongside the default semiring without changing
+  convergence.
+- **GPU residency:** Each relation maintains device buffers for `base`,
+  `delta_in`, and `delta_out`. Hot epochs remain on device; compacted shards
+  spill to host memory and rehydrate transparently when joins or provenance
+  queries reference them.
+
+The result is a deterministic, testable mapping from Telephone’s DDlog syntax
+to GPU execution that supports cancellations, scheduled delays, and provenance
+inspection without surprising the incremental runtime.
+
 ## 6.3 Query Processing Engine
 
 ### 6.3.1 Query Execution Architecture
@@ -2617,6 +2688,15 @@ sequenceDiagram
 ```
 
 ### 6.3.3 Provenance Tracking
+
+#### Semiring Model
+
+Telephone adopts Z-set semantics for existence weights: every tuple carries an
+integer `Δ` that unions add and joins multiply. This default semiring powers
+incremental cancellation while remaining open to user-defined tags (e.g.,
+probabilistic weights) that propagate in parallel without influencing
+convergence. Aggregations fold weights via the declared monoid, and provenance
+metadata records which weights contributed to each derived fact.
 
 #### Derivation Chain Maintenance
 
