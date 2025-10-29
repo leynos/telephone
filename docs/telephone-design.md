@@ -3681,3 +3681,249 @@ for neurosymbolic AI applications while maintaining operational simplicity and
 cost effectiveness. The single-node focus allows organizations to deploy
 high-performance logical reasoning capabilities without the complexity and
 overhead of distributed infrastructure management.
+
+## Appendix A — Data Acquisition & Preparation
+
+This appendix makes the test plan **turn‑key**. It specifies exactly how to
+obtain, subset, convert, and verify the datasets used in Phase 1 (Batch) and
+Phase 2 (Incremental).
+
+______________________________________________________________________
+
+### A1. Scope & outputs
+
+**Goal.** Produce reproducible, version‑pinned corpora for CI and for local
+performance runs.
+
+**Artifacts.**
+
+- Raw downloads in `data/<source>/raw/`
+- Converted RDF/RDF★ in `data/<source>/rdf/`
+- Small CI fixtures in `tests/data/<source>/`
+- A manifest `DATASET_MANIFEST.md` with URLs, versions, and SHA256s
+
+**Make targets.**
+
+- `make data` — fetch + convert everything
+- `make validate-data` — checksums, RDF lint, counts, dry‑load
+
+______________________________________________________________________
+
+### A2. Directory layout
+
+```text
+repo/
+  data/
+    eventkg/{raw,rdf}
+    gdelt/{raw,rdf}
+    icews/{raw,rdf}
+  mapping/
+    gdelt.yaml
+    icews.yaml
+  scripts/
+    gdelt_to_rdf.py
+    icews_to_rdf.py
+    synth/
+      make_synth_graph.py
+  tests/
+    data/{eventkg,gdelt,icews,synth}
+  DATASET_MANIFEST.md
+```
+
+______________________________________________________________________
+
+### A3. EventKG (RDF dumps)
+
+#### A3.1. Obtain
+
+1. Locate the latest EventKG release (Zenodo). Record DOI + release date in
+   `DATASET_MANIFEST.md`.
+2. Download and verify:
+
+   ```bash
+   mkdir -p data/eventkg/raw && cd data/eventkg/raw
+   curl -L -o eventkg.tar.gz "<EVENTKG_RELEASE_URL>"
+   shasum -a 256 eventkg.tar.gz | tee -a ../../../DATASET_MANIFEST.md
+   tar -xzf eventkg.tar.gz
+   ```
+
+#### A3.2. Prepare
+
+- Normalize to N‑Triples for streaming parsers (optional):
+
+  ```bash
+  mkdir -p ../rdf
+  for f in *.ttl *.nt *.nq; do
+    rdfpipe "$f" --output-format nt > ../rdf/"${f%.*}.nt"
+  done
+  ```
+
+#### A3.3. Sample (CI fixture)
+
+- Create a small subset (e.g., events for one month) via SPARQL CONSTRUCT; save
+  to `tests/data/eventkg/eventkg_ci.nt`.
+
+______________________________________________________________________
+
+### A4. GDELT (modeled as RDF)
+
+#### A4.1. Obtain
+
+1. Choose a bounded window (e.g., one week of v2 Events + GKG).
+2. Download CSVs:
+
+   ```bash
+   mkdir -p data/gdelt/raw && cd data/gdelt/raw
+   # Example: 2024-06-01 day files (adjust pattern/range)
+   wget -e robots=off -r -np -nd \
+     -A "20240601.export.CSV.zip,20240601.gkg.csv.zip" \
+     "https://data.gdeltproject.org/gdeltv2/"
+   ```
+
+3. Record filenames and SHA256 hashes in `DATASET_MANIFEST.md`.
+
+#### A4.2. Convert → RDF
+
+- Define mapping once in `mapping/gdelt.yaml` (columns → IRIs; time/geo
+  normalization; optional RDF★ for provenance):
+
+  ```yaml
+  prefixes:
+    ex: "http://example.org/"
+    time: "http://www.w3.org/2006/time#"
+  event:
+    subject: "ex:event/{GLOBALEVENTID}"
+    predicates:
+      ex:actor1: "Actor1Name"
+      ex:actor2: "Actor2Name"
+      ex:eventCode: "EventCode"
+      time:inXSDDateTime: "SQLDATE" # normalized to xsd:dateTime
+  ```
+
+- Run converter:
+
+  ```bash
+  cd repo
+  python3 scripts/gdelt_to_rdf.py \
+    --mapping mapping/gdelt.yaml \
+    --in data/gdelt/raw \
+    --out data/gdelt/rdf/gdelt_week.nt
+  ```
+
+#### A4.3. CI fixture
+
+- Sample 1–5% of events (random by `GLOBALEVENTID` hash) to
+  `tests/data/gdelt/gdelt_ci.nt`.
+
+______________________________________________________________________
+
+### A5. ICEWS (modeled as RDF)
+
+#### A5.1. Obtain
+
+1. Download TSVs from Harvard Dataverse (document snapshot date).
+2. Verify checksums; store in `data/icews/raw/` and record in
+   `DATASET_MANIFEST.md`.
+
+#### A5.2. Convert → RDF
+
+- Mapping in `mapping/icews.yaml` (CAMEO codes to IRIs; actors; geos; dates).
+- Convert with:
+
+  ```bash
+  python3 scripts/icews_to_rdf.py \
+    --mapping mapping/icews.yaml \
+    --in data/icews/raw \
+    --out data/icews/rdf/icews_month.nt
+  ```
+
+#### A5.3. CI fixture
+
+- Subset a single week/day to `tests/data/icews/icews_ci.nt`.
+
+______________________________________________________________________
+
+### A6. RDF★ handling
+
+- If annotating relationships (e.g., provenance):
+
+  - Use embedded triples: `<< s p o >> prov:wasDerivedFrom ex:source123 .`
+  - Confirm your import path accepts RDF★; otherwise, flatten via reification
+    during import.
+
+______________________________________________________________________
+
+### A7. Synthetic datasets
+
+#### A7.1. Generators
+
+- Place deterministic generators in `scripts/synth/` (fixed seeds):
+
+  ```bash
+  python3 scripts/synth/make_synth_graph.py \
+    --seed 42 \
+    --n-entities 500 \
+    --out tests/data/synth/synth_graph.nt \
+    --gold tests/data/synth/synth_gold.json
+  ```
+
+#### A7.2. Golden outputs
+
+- For each synthetic rule suite, precompute expected IDB (JSON/CSV) and
+  version‑control it under `tests/data/synth/`.
+
+______________________________________________________________________
+
+### A8. Version pinning & manifests
+
+- `DATASET_MANIFEST.md` should list for each asset:
+
+  - **Source URL/DOI**
+  - **Release/date range**
+  - **Local path**
+  - **SHA256** of the file
+  - **Sampling query/seed** (if applicable)
+
+Example entry:
+
+```yaml
+- name: eventkg-2024-03
+  url: https://zenodo.org/record/<id>
+  sha256: <hex>
+  files:
+    - data/eventkg/raw/eventkg.tar.gz
+    - data/eventkg/rdf/eventkg.nt
+  sample:
+    query: sparql/ekg_month_construct.rq
+```
+
+______________________________________________________________________
+
+### A9. Smoke checks (`make validate-data`)
+
+The target should:
+
+1. **Verify checksums:** compare against `DATASET_MANIFEST.md`
+2. **RDF lint:** parse with `rapper`/`riot` and fail on syntax errors
+3. **Counts:** print triple counts per file and per graph
+4. **Dry‑load:** run a one‑rule load into the engine to catch format regressions
+
+Example snippet:
+
+```bash
+riot --validate data/eventkg/rdf/eventkg.nt
+python3 scripts/dry_load.py --in data/eventkg/rdf/eventkg.nt --rule tests/rules/ping.dl
+```
+
+______________________________________________________________________
+
+### A10. Repro tips
+
+- **Freeze windows:** always test with fixed date ranges (documented in the
+  manifest).
+- **Pin tooling:** record versions of `rdfpipe/rapper/riot` and Python packages
+  used by converters.
+- **Don’t mutate raw:** treat `data/*/raw` as read‑only; write conversions to
+  `data/*/rdf`.
+- **Small first:** use CI fixtures locally before switching to large runs to
+  validate pipeline health.

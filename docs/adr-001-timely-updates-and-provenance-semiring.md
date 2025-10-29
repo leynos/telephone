@@ -1,9 +1,10 @@
 # ADR: Timely Updates & Provenance Semantics for Telephone
 
-**Status**: Accepted (Working Spec v0.1) **Date**: 2025‑10‑25 **Decision
-Owner**: Telephone architecture group **Related**: DDlog parser/syntax
-(ddlint), Telephone compiler & runtime, GPU storage layout, Event‑centric KG
-integration
+**Status**: Accepted (Working Spec v0.1)\
+**Date**: 2025‑10‑25\
+**Decision Owner**: Telephone architecture group\
+**Related**: DDlog parser/syntax (ddlint), Telephone compiler & runtime,
+    GPU storage layout, Event‑centric KG integration
 
 ______________________________________________________________________
 
@@ -73,7 +74,7 @@ ______________________________________________________________________
 **Time unit**: `epoch: u64`. **Transaction**: a batch of `(tuple, Δ)` arriving
 for a single `epoch=t`.
 
-**Ingress rules**
+#### Ingress rules
 
 - On `begin_epoch(t)`, `delta_in := updates(t)`.
 - When all producers for each input relation signal `watermark(t)`, the epoch
@@ -89,12 +90,12 @@ for a single `epoch=t`.
 - Multi‑head rules are sugar for multiple single‑head rules sharing the same
   body. Locations `@e` are carried as columns; they do not affect epoch routing.
 
-**Commit**
+#### Commit
 
 - After fixpoint for epoch `t`, fold `Δ*_t` into `base`, cancelling opposite
   weights, then publish `watermark(t)` to downstream consumers.
 
-**Current limits (v0.1)**
+#### Current limits (v0.1)
 
 - No out‑of‑order within a stream; late data (`time < current_watermark`) is
   rejected or logged as *correction‑needed*.
@@ -185,13 +186,13 @@ ______________________________________________________________________
 
 ## Consequences
 
-**Positive**
+### Positive
 
 - Deterministic, cancelable updates with DDlog‑style deltas.
 - Clear mapping from Telephone syntax (`-<N>`, `'`, multi‑head) to runtime.
 - GPU‑friendly delta iteration with bounded device memory via spill policy.
 
-**Negative / Limits**
+### Negative / Limits
 
 - No late data in v0.1; callers must resubmit as a forward correction at a
   future epoch.
@@ -225,7 +226,7 @@ ______________________________________________________________________
 
 ## Appendix A — Worked Example
 
-**Rule with delay and multi‑head (Telephone syntax)**
+### Rule with delay and multi-head (Telephone syntax)
 
 ```ddlog
 // Derived at time t+10 due to delay on the head

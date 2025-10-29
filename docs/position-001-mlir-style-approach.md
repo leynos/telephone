@@ -54,7 +54,7 @@ ______________________________________________________________________
 
 ## Proposal in one diagram (textual)
 
-```
+```text
 DDlog source  ──► Parser (per ddlint spec) ──► tel.ir (pliron dialect)
    │                                        ▲          │
    │                                        │          │  egg ruleset:
@@ -82,22 +82,28 @@ ______________________________________________________________________
 
 ## IR design (pliron dialect): **`tel`**
 
-**Core ops**
+### Core ops
 
-- `tel.relation(name, schema, role=input|output|internal, kind=relation|stream|multiset, attrs={keys,…, semiring,…})`
-- `tel.rule(heads: Region<tel.atom>, body: Region<tel.term>)`
-- **Relational algebra**:
-  `tel.join(lhs, rhs, on)`,`tel.filter(inp, pred)`,`tel.project(inp, cols)`,`tel.aggregate(inp, group_by, agg)`
-- **Differential**: `tel.delta(inp)`, `tel.union_set(lhs, rhs)` (dedup
-  semantics), `tel.fixpoint(region)` with SCC boundaries
-- **Adornments**: `tel.delay(n)`, `tel.diffmark`, `tel.locate(expr)`; by‑ref
-  heads keep a typed `ref_new` node per the parser spec.
+- `tel.relation(name, schema, role, kind, attrs)` where `role` denotes
+  `input|output|internal`, `kind` is `relation|stream|multiset`, and `attrs`
+  capture keys plus semiring metadata.
+- `tel.rule(heads: Region<tel.atom>, body: Region<tel.term>)`.
+- Relational algebra primitives include `tel.join(lhs, rhs, on)`,
+  `tel.filter(inp, pred)`, `tel.project(inp, cols)`, and
+  `tel.aggregate(inp, group_by, agg)`.
+- Differential operators cover `tel.delta(inp)`, `tel.union_set(lhs, rhs)` for
+  deduplicating unions, and `tel.fixpoint(region)` scoped by SCC boundaries.
+- Adornment helpers comprise `tel.delay(n)`, `tel.diffmark`, and
+  `tel.locate(expr)`; by‑reference heads use a typed `ref_new` node that
+  mirrors the parser specification.
 
-**Attributes & types**
+### Attributes & types
 
-- `Semiring` attribute (Boolean initially; extensible to probabilistic/weighted
-  tags), propagated through ops to preserve provenance semantics end‑to‑end.
-- Key/FD metadata and index hints to make rewrites cost‑aware and safe.
+- `Semiring` attribute (Boolean initially; extensible to probabilistic or
+  weighted tags) propagated through ops to preserve provenance semantics
+  end‑to‑end.
+- Key and functional dependency metadata plus index hints that make rewrites
+  cost‑aware and safe.
 - Verified stratification and SCC formation to scope recursion and delta rounds.
 
 This mirrors Telephone’s current logical model while retaining enough structure
@@ -107,53 +113,59 @@ ______________________________________________________________________
 
 ## Rewrite & canonicalisation (egg / egglog)
 
-**Rule families (guarded by metadata):**
+### Rule families (guarded by metadata)
 
-- Join **commutativity/associativity** under key/FD constraints (avoid
-  exploding cross joins).
-- **Selection / projection pushdown** with nullability and semiring‑safety
-  checks.
-- **Aggregation** normalisation (e.g., SUM/COUNT forms), regrouping when keys
-  justify it.
-- **Delta distribution** for semi‑naïve: push `delta` through algebra;
-  eliminate redundant deltas.
-- **Predicate normalisation** (CNF/DNF as needed for index matching).
+- Join commutativity and associativity under key or functional dependency
+  constraints to avoid exploding cross joins.
+- Selection and projection pushdown with nullability and semiring‑safety checks.
+- Aggregation normalisation (for example, SUM or COUNT forms), regrouping when
+  keys justify it.
+- Delta distribution for semi‑naïve evaluation: push `delta` through algebra
+  and eliminate redundant deltas.
+- Predicate normalisation (CNF or DNF) as needed for index matching.
 
-**Extraction & hashing**
+### Extraction & hashing
 
-- An egg `Analysis` computes (per e‑class) a **type/semiring summary**, an
-  estimated **cost**, and a **digest**.
-- Deterministically extract the min‑cost representative; serialise to a
-  **normalised textual form**; compute
-  `PlanHash = BLAKE3(normalised_text ∥ engine_abi ∥ cost_model_version ∥ target_triple ∥ index_stats_fingerprint)`.
+- An egg `Analysis` computes for each e‑class a type and semiring summary, an
+  estimated cost, and a digest.
+- Deterministically extract the minimum cost representative, serialise to a
+  normalised textual form, and compute:
+
+  ```text
+  PlanHash = BLAKE3(
+    normalised_text ∥ engine_abi ∥ cost_model_version ∥
+    target_triple ∥ index_stats_fingerprint
+  )
+  ```
+
 - Salted hashes avoid “cache hits” that are ABI‑incompatible or
   cost‑model‑inappropriate.
 
-This delivers **stable, DAG‑friendly** representations you can hash and
-cache—an approach already proven useful in other DAG pipelines (idempotent
-identifiers, blob indirection, and graph‑shaped orchestration).
+This delivers stable, DAG-friendly representations you can hash and cache—an
+approach already proven useful in other DAG pipelines (idempotent identifiers,
+blob indirection, and graph-shaped orchestration).
 
-**Guard‑rails**
+### Guard-rails
 
-- Rewrite budgets to cap e‑graph growth; SCC‑scoped saturation (no cross‑SCC
-  rule motion) to preserve monotonicity and fixpoint safety.
-- Verifiers ensure semiring correctness and stratification post‑rewrite.
+- Rewrite budgets cap e-graph growth, and SCC-scoped saturation (no cross-SCC
+  rule motion) preserves monotonicity plus fixpoint safety.
+- Verifiers ensure semiring correctness and stratification post-rewrite.
 
 ______________________________________________________________________
 
 ## Caching and invalidation
 
-**Three tiers (keys derived from `PlanHash`):**
+### Three tiers (keys derived from `PlanHash`)
 
-1. **Plan cache**: `PlanHash → LogicalPlan` (post‑extraction `tel` plan).
-2. **Code cache**: `PlanHash ⊕ Target → CompiledFragment` (GPU/CPU kernels,
+1. Plan cache: `PlanHash → LogicalPlan` (post-extraction `tel` plan).
+2. Code cache: `PlanHash ⊕ Target → CompiledFragment` (GPU or CPU kernels plus
    fused loops).
-3. **Result cache (optional, sharded)**:
+3. Result cache (optional, sharded):
    `(PlanHash, InputSnapshots, Epoch) → MaterialisedChunk`, where
-   `InputSnapshots` are content hashes over base relations’ current
-   shards/journals.
+   `InputSnapshots` are content hashes over base relations’ current shards or
+   journals.
 
-**Invalidation**
+### Invalidation
 
 - *Code edit*: re‑parse → rewrite → extract → compare `PlanHash`. If unchanged,
   reuse plan+code; if changed, invalidate dependants via reverse‑topo walk of
@@ -209,7 +221,7 @@ ______________________________________________________________________
 
 Source:
 
-```
+```ddlog
 CoPresent(p1, p2) :-
   Happened(p1, _, loc, t),
   Happened(p2, _, loc, t),
