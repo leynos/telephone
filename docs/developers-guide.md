@@ -23,14 +23,26 @@ configuration). Cargo has no per-profile `rustflags`, so a direct
 `cargo build --release` takes the configuration's flags unless `RUSTFLAGS` is
 assigned too.
 
-On Linux, install `mold` before building: the configuration names it, so a
-build without it fails at link time. CI installs it through `setup-rust`'s
-`install-mold` input. `tests/build_standard_contract.rs` holds the standard. It
-reads the configuration sources, the commands `make -n` prints for each
-development target on a Linux host and a macOS host (each keeping the caller's
-own `RUSTFLAGS`) and for each coverage and release target on a Linux host, and
-the `setup-rust` steps of the CI workflows (each must pass `install-mold`), so
-a flag lost through a recipe or workflow edit fails there.
+On Linux, install `mold` before building: the configuration names it, so a build
+without it fails at link time. rustc passes `-fuse-ld=mold` through its default
+`cc` driver, which must be GCC 12.1 or newer, or clang, so `clang` is needed
+only where `cc` is an older GCC (the users' guide shows how to select it). CI
+installs `mold` through `setup-rust`'s `install-mold` input.
+`tests/build_standard_contract.rs` holds the standard. It reads the
+configuration sources, the commands `make -n` prints for each development target
+on a Linux host and a macOS host (each keeping the caller's own `RUSTFLAGS`) and
+for each coverage and release target on a Linux host, and the `setup-rust` steps
+of the CI workflows (each must pass `install-mold`), so a flag lost through a
+recipe or workflow edit fails there.
+
+### Decision record
+
+The development builds take the parallel frontend and, on Linux, `mold`, because
+frontend time and link time dominate the edit-compile cycle and neither changes
+what the code means. Release and coverage are excluded because a shipped
+artefact should stay on the platform linker and a measurement should not depend
+on the fast flags. The standard is enforced by a contract test rather than
+prose, so a recipe or workflow edit that loses a flag fails the build.
 
 ### Cranelift
 
