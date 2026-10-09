@@ -310,11 +310,11 @@ ______________________________________________________________________
 
 ### Appendix: selected `tel` op → backend mapping
 
-| `tel` op                            | Backend strategy                                                                                           |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `tel.join(lhs,rhs,on)`              | sort‑merge/hash join kernels; two‑phase (count→prefix‑sum→emit); fuse with projection when safe.           |
-| `tel.filter(inp,pred)`              | per‑tuple kernel; predicate pushdown before join when verified.                                            |
-| `tel.project(inp,cols)`             | copy/map kernel; opportunistically fused.                                                                  |
-| `tel.aggregate(inp, group_by, agg)` | segmented reductions; atomics or sort+reduce by key depending on cardinality.                              |
-| `tel.delta(inp)`                    | marks incremental path; distributes through algebra via rewrites to limit work.                            |
-| `tel.fixpoint(region)`              | host‑orchestrated iteration per SCC; GPU kernels per round; differential deltas drive convergence.         |
+| `tel` op                            | Backend strategy                                                                                   |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `tel.join(lhs,rhs,on)`              | sort‑merge/hash join kernels; two‑phase (count→prefix‑sum→emit); fuse with projection when safe.   |
+| `tel.filter(inp,pred)`              | per‑tuple kernel; predicate pushdown before join when verified.                                    |
+| `tel.project(inp,cols)`             | copy/map kernel; opportunistically fused.                                                          |
+| `tel.aggregate(inp, group_by, agg)` | segmented reductions; atomics or sort+reduce by key depending on cardinality.                      |
+| `tel.delta(inp)`                    | marks incremental path; distributes through algebra via rewrites to limit work.                    |
+| `tel.fixpoint(region)`              | host‑orchestrated iteration per SCC; GPU kernels per round; differential deltas drive convergence. |
