@@ -33,7 +33,9 @@ configuration sources, the commands `make -n` prints for each development
 target on a Linux host and a macOS host (each keeping the caller's own
 `RUSTFLAGS`) and for each coverage and release target on a Linux host, and the
 `setup-rust` steps of the CI workflows (each must pass `install-mold`), so a
-flag lost through a recipe or workflow edit fails there.
+flag lost through a recipe or workflow edit fails there. The contract runs
+`make -n`, so a direct `cargo test` needs GNU make on the `PATH`. It fails when
+`make` is missing instead of skipping, so a missing tool cannot read as a pass.
 
 ### Decision record
 
@@ -44,6 +46,9 @@ shipped artefact should stay on the platform linker and a measurement should
 not depend on the fast flags. The standard is enforced by a contract test
 rather than prose, so a recipe or workflow edit that loses a flag fails the
 build.
+
+[ADR 002](adr-002-rust-build-standard.md) records the context, the options and
+the consequences.
 
 ### Cranelift
 
