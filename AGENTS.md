@@ -220,7 +220,7 @@ project:
     validating formatting across all packages without modifying files. Use
     `make fmt` (`cargo fmt --all`, then `mdformat-all` for Markdown) to apply
     the formatting fixes that the check reports.
-  - `make lint` executes:
+  - `make lint` executes, using the default `CLIPPY_FLAGS`:
 
     ```sh
     cargo clippy --all-targets --all-features -- -D warnings
@@ -229,7 +229,7 @@ project:
     linting every target with all features enabled and denying all Clippy
     warnings. The recipe also sets `RUSTFLAGS` to the development build
     standard, composed onto any inherited value.
-  - `make test` executes:
+  - `make test` executes, using the default `TEST_FLAGS`:
 
     ```sh
     cargo test --all-targets --all-features
