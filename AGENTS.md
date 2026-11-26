@@ -229,9 +229,10 @@ project:
     linting every target with all features enabled and denying all Clippy
     warnings. The recipe also sets `RUSTFLAGS` to the development build
     standard, composed onto any inherited value. It first runs
-    `make interrogate`, which requires every Python definition under `tests`
-    to carry a docstring (add new Python directories to
-    `INTERROGATE_TARGETS`).
+    `make interrogate` (`interrogate --fail-under 100` over `tests`, through
+    `uv`; add new Python directories to `INTERROGATE_TARGETS`). Interrogate
+    rounds its percentage to one decimal, so check the missing count directly
+    if the Python estate ever passes about 2,000 definitions.
   - `make test` executes, using the default `TEST_FLAGS`:
 
     ```sh

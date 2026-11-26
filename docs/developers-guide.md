@@ -84,3 +84,14 @@ run the target; `.github/cv005.toml` holds the repository name and nothing
 else. A Dependabot pull request merged by the automerge workflow fires no push
 event, so that merge publishes nothing until the next push to `main` or a manual
 `workflow_dispatch` run (shared-actions #518 tracks the fix).
+
+## Python docstring coverage
+
+`make lint` runs `make interrogate` before Clippy. The target runs
+`interrogate --fail-under 100` over `INTERROGATE_TARGETS` (`tests`) through
+`uv tool run`, so `uv` must be on the `PATH`; CI sets it up before the Lint
+step. Add any new Python directory to `INTERROGATE_TARGETS`, and run
+`make interrogate INTERROGATE_TARGETS="-vv tests"` to list each undocumented
+definition. Interrogate rounds its percentage to one decimal, so a repository
+that grows past about 2,000 definitions needs a check on the missing count
+itself.
