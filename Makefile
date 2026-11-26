@@ -1,4 +1,4 @@
-.PHONY: help all clean test build release lint fmt check-fmt markdownlint nixie test-workflow-contracts
+.PHONY: help all clean test build release lint fmt check-fmt markdownlint nixie test-workflow-contracts interrogate
 
 APP ?= telephone
 CARGO ?= cargo
@@ -43,7 +43,26 @@ test: ## Run tests with warnings treated as errors
 target/%/$(APP): ## Build binary in debug or release mode
 	$(if $(findstring release,$(@)),RUSTFLAGS="$${RUSTFLAGS-}",RUSTFLAGS="$${RUSTFLAGS:+$$RUSTFLAGS }$(STANDARD_RUSTFLAGS)") $(CARGO) build $(BUILD_JOBS) $(if $(findstring release,$(@)),--release) --bin $(APP)
 
-lint: ## Run Clippy with warnings denied
+# Interrogate measures docstring presence in the Python files under
+# INTERROGATE_TARGETS; add a new Python directory there. No `--python` pin: a
+# managed interpreter would be downloaded.
+INTERROGATE_VERSION ?= 1.7.0
+INTERROGATE_TARGETS ?= tests
+INTERROGATE = $(UV_ENV) $(UV) tool run --from 'interrogate==$(INTERROGATE_VERSION)' interrogate -vv --fail-under 100
+
+# Interrogate rounds its percentage to one decimal, so `--fail-under 100` alone
+# can pass a lone gap in a large repository; fail on any MISSED row as well.
+interrogate: ## Enforce complete Python docstring coverage
+	@report="$$($(INTERROGATE) $(INTERROGATE_TARGETS))"; \
+	  status=$$?; \
+	  printf '%s\n' "$$report"; \
+	  test "$$status" -eq 0 || exit "$$status"; \
+	  if printf '%s\n' "$$report" | grep '| *MISSED *|' >/dev/null; then \
+	    printf '%s\n' 'interrogate: undocumented definitions remain; see the MISSED rows above' >&2; \
+	    exit 1; \
+	  fi
+
+lint: interrogate ## Run interrogate and Clippy with warnings denied
 	RUSTFLAGS="$${RUSTFLAGS:+$$RUSTFLAGS }$(STANDARD_RUSTFLAGS)" $(CARGO) clippy $(CLIPPY_FLAGS)
 
 fmt: ## Format Rust and Markdown sources
