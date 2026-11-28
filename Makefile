@@ -63,7 +63,7 @@ INTERROGATE = $(UV_GATE) tool --from 'interrogate==$(INTERROGATE_VERSION)' -- in
 interrogate: ## Enforce complete Python docstring coverage
 	$(INTERROGATE) $(INTERROGATE_TARGETS)
 
-lint: interrogate ## Run interrogate and Clippy with warnings denied
+lint: interrogate yamllint actionlint ## Run interrogate and Clippy with warnings denied
 	RUSTFLAGS="$${RUSTFLAGS:+$$RUSTFLAGS }$(STANDARD_RUSTFLAGS)" $(CARGO) clippy $(CLIPPY_FLAGS)
 
 fmt: ## Format Rust and Markdown sources
@@ -86,3 +86,18 @@ help: ## Show available targets
 test-workflow-contracts: ## Validate the CodeScene coverage workflow contract (CV-005)
 	$(CV005_CONTRACTS) check --repository .
 	$(UV_GATE) tool --python 3.13 --from 'pytest==9.2.0' --with 'pyyaml==6.0.3' -- pytest tests/workflow_contracts -q
+
+YAMLLINT ?= yamllint
+ACTIONLINT ?= actionlint
+
+.PHONY: yamllint actionlint
+
+# yamllint reads `.yamllint.yml`, which extends `.yamllint-estate.yml`, and
+# resolves that path against the current directory, so run it from the root.
+yamllint: SHELL := bash
+yamllint: .SHELLFLAGS := -eo pipefail -c
+yamllint: ## Lint every tracked YAML file strictly
+	git ls-files -z '*.yml' '*.yaml' | xargs -0 -r $(YAMLLINT) --strict --
+
+actionlint: ## Lint the GitHub Actions workflows (and their shell scripts when ShellCheck is on PATH)
+	$(ACTIONLINT)
