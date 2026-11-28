@@ -31,7 +31,9 @@
 - **Keep file size manageable.** No single code file may be longer than 400
   lines.  Long switch statements or dispatch tables should be broken up by
   feature and constituents colocated with targets. Large blocks of test data
-  should be moved to external data files.
+  should be moved to external data files. A file vendored byte for byte from an
+  upstream, such as `scripts/uv_gate.py`, is exempt, because splitting it would
+  break its canonical digest.
 
 ## Documentation maintenance
 
@@ -229,8 +231,9 @@ project:
     linting every target with all features enabled and denying all Clippy
     warnings. The recipe also sets `RUSTFLAGS` to the development build
     standard, composed onto any inherited value. It first runs
-    `make interrogate` (`interrogate --fail-under 100` over `tests`, through
-    `uv`; add new Python directories to `INTERROGATE_TARGETS`). Interrogate
+    `make interrogate` (`interrogate --fail-under 100` over `scripts` and
+    `tests`, through the `uv_gate` helper; add new Python directories to
+    `INTERROGATE_TARGETS`). Interrogate
     rounds its percentage to one decimal, so check the missing count directly
     if the Python estate ever passes about 2,000 definitions.
   - `make test` executes, using the default `TEST_FLAGS`:
