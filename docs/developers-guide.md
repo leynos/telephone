@@ -87,6 +87,10 @@ Dependabot pull request merged by the automerge workflow fires no push event,
 so that merge publishes nothing until the next push to `main` or a manual
 `workflow_dispatch` run (shared-actions #518 tracks the fix).
 
+A `uv` that reports only `Git operation failed` for a Git source missing from
+the cache is not retried online by the helper: warm the cache once by running
+`uv tool run` on that source, or use a `uv` that names the offline reason.
+
 ## Python docstring coverage
 
 `make lint` runs `make interrogate` before Clippy. The target runs
